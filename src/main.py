@@ -270,7 +270,6 @@ def get_lines(field_poly):
 def get_tsp_distance_matrix(field_poly):
 	all_lines = get_lines(field_poly)
 	num_of_lines = len(all_lines)
-	points_dict = {}
 	tsp_distance_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
 	
 	for i in range(num_of_lines * 2):
