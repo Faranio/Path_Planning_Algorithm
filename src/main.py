@@ -9,9 +9,10 @@ from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
 
+cut_len = 25
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 10
+path_width = 15
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -146,8 +147,6 @@ def decompose_from_point(field_poly, some_point, show=False):
 		
 		if area_cost_ratio > best.acr:
 			best = Candidate(area_cost_ratio, path_field)
-			logger.debug(f"curr_count: {curr_count}")
-			logger.debug(f"Best: {best}")
 			decomposed_polygons = [best.field, *polygons]
 			
 	logger.debug(f"Final_count: {curr_count}")
@@ -190,6 +189,7 @@ def decompose_from_points(field_poly: FieldPoly, points=None, use_mp=False, show
 	return resultant_polys
 
 
+@logger.trace()
 def perform_optimization(field_poly, use_mp=False):
 	polygons = decompose_from_points(field_poly, field_poly.get_outer_points(), use_mp=False, show=False)
 	optimum_polygons = [polygons[0]]
@@ -207,33 +207,17 @@ def perform_optimization(field_poly, use_mp=False):
 	return optimum_polygons
 
 
-def main():
-	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	#                                                                                          [200, 800],
-	#                                                                                          [800, 800],
-	#                                                                                          [800, 200]]])).plot()
-	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
-	
-	initial_lines_count = get_field_lines_count(field_poly, show=True)
-	logger.info(f"initial_lines_count: {initial_lines_count}")
-	logger.info(f"Initial area_cost_ratio: {field_poly.area_cost_ratio}")
-	field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
-	
-	plt.gca().set_aspect('equal', 'box')
-	plt.show()
-	
-	optimum_polygons = perform_optimization(field_poly, use_mp=False)
-	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
+@logger.trace()
+def plot_optimum_polygons(optimum_polygons, field_poly):
 	costs = []
 	field_poly.plot()
 	total_field_count = 0
-	cut_len = 20
 	all_lines = []
 	
 	for optimum_polygon in optimum_polygons:
 		lines_count = get_field_lines_count(optimum_polygon, show=False)
 		total_field_count += lines_count
-		optimum_polygon.plot(f"Cost: {lines_count}")
+		optimum_polygon.plot(f"Cost: {lines_count}", lw=1)
 		costs.append(optimum_polygon.get_min_cost(path_width).cost)
 		field_lines = get_field_lines(optimum_polygon)
 		
@@ -245,16 +229,48 @@ def main():
 			all_lines.append(ls)
 			ls_x, ls_y = ls.xy
 			plt.plot(ls_x, ls_y)
+	
+	final_acr = field_poly.geometry.area / sum(costs)
+	logger.info(f"Final Area Cost Ratio: {final_acr}")
+	logger.info(f"Total Field Count: {total_field_count}")
+	plt.gca().set_aspect('equal', 'box')
+	plt.show()
+	
+	
+@logger.trace()
+def get_tsp_cost_matrix(field_poly):
+	all_lines = []
+	
+	if isinstance(field_poly, list):
+		for optimum_polygon in field_poly:
+			field_lines = get_field_lines(optimum_polygon)
 			
+			for line in field_lines:
+				ls = shg.LineString(line.line)
+				p1 = ls.interpolate(cut_len).coords[0]
+				p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
+				ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
+				all_lines.append(ls)
+	else:
+		field_lines = get_field_lines(field_poly)
+		
+		for line in field_lines:
+			ls = shg.LineString(line.line)
+			p1 = ls.interpolate(cut_len).coords[0]
+			p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
+			ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
+			all_lines.append(ls)
+	
 	num_of_lines = len(all_lines)
 	tsp_cost_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
+	logger.debug(f"TSP Cost Matrix Shape: {tsp_cost_matrix.shape}")
 	
 	for i in range(num_of_lines * 2):
 		for j in range(num_of_lines * 2):
 			if i == j or i == j + num_of_lines or j == i + num_of_lines:
 				tsp_cost_matrix[i][j] = -1
 				continue
-				
+			
 			if i < num_of_lines:
 				x1, y1 = list(all_lines[i].coords)[0]
 			else:
@@ -266,13 +282,31 @@ def main():
 				x2, y2 = list(all_lines[j - num_of_lines].coords)[-1]
 			
 			tsp_cost_matrix[i][j] = np.sqrt(np.power(x2 - x1, 2) + np.power(y2 - y1, 2))
-		
+	
 	logger.debug(f"TSP Cost Matrix: {tsp_cost_matrix}")
-	final_acr = field_poly.geometry.area / sum(costs)
-	logger.info(f"Final Area Cost Ratio: {final_acr}")
-	logger.info(f"Total Field Count: {total_field_count}")
+	return tsp_cost_matrix
+
+
+def main():
+	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	                                                                                         [200, 800],
+	                                                                                         [800, 800],
+	                                                                                         [800, 200]]])).plot()
+	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	
+	initial_lines_count = get_field_lines_count(field_poly, show=True)
+	logger.info(f"initial_lines_count: {initial_lines_count}")
+	logger.info(f"Initial area_cost_ratio: {field_poly.area_cost_ratio}")
+	field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
+	
 	plt.gca().set_aspect('equal', 'box')
 	plt.show()
+	
+	optimum_polygons = perform_optimization(field_poly, use_mp=False)
+	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
+	
+	plot_optimum_polygons(optimum_polygons, field_poly)
+	tsp_cost_matrix = get_tsp_cost_matrix(optimum_polygons)
 	
 	
 if __name__ == "__main__":
