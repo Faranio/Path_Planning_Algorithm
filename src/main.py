@@ -5,6 +5,9 @@ import more_itertools as mi
 import numpy as np
 import shapely.geometry as shg
 
+from python_tsp.exact import solve_tsp_dynamic_programming
+from python_tsp.heuristics import solve_tsp_simulated_annealing
+
 from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
@@ -12,7 +15,7 @@ from lgblkb_tools.geometry import FieldPoly
 cut_len = 25
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 15
+path_width = 20
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -228,7 +231,7 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
 			ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
 			all_lines.append(ls)
 			ls_x, ls_y = ls.xy
-			plt.plot(ls_x, ls_y)
+			plt.plot(ls_x, ls_y, c='r')
 	
 	final_acr = field_poly.geometry.area / sum(costs)
 	logger.info(f"Final Area Cost Ratio: {final_acr}")
@@ -262,12 +265,12 @@ def get_tsp_distance_matrix(field_poly):
 			all_lines.append(ls)
 	
 	num_of_lines = len(all_lines)
-	tsp_distance_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
+	tsp_distance_matrix = np.zeros([num_of_lines * 2, 2])
 	
 	for i in range(num_of_lines * 2):
 		for j in range(num_of_lines * 2):
 			if i == j or i == j + num_of_lines or j == i + num_of_lines:
-				tsp_distance_matrix[i][j] = np.inf
+				tsp_distance_matrix[i][j] = 0
 				continue
 			
 			if i < num_of_lines:
@@ -282,9 +285,21 @@ def get_tsp_distance_matrix(field_poly):
 			
 			tsp_distance_matrix[i][j] = np.sqrt(np.power(x2 - x1, 2) + np.power(y2 - y1, 2))
 	
+	# Denotes that the problem is to construct Hamiltonian Path (Not Cycle)
+	tsp_distance_matrix[:, 0] = 0
+	
 	logger.debug(f"TSP Cost Matrix: {tsp_distance_matrix}")
 	logger.debug(f"TSP Cost Matrix Shape: {tsp_distance_matrix.shape}")
 	return tsp_distance_matrix
+
+
+def solve_tsp(tsp_distance_matrix, exact=False):
+	if exact:
+		permutation, distance = solve_tsp_dynamic_programming(tsp_distance_matrix)
+	else:
+		permutation, distance = solve_tsp_simulated_annealing(tsp_distance_matrix)
+	
+	return permutation, distance
 
 
 def main():
@@ -301,12 +316,16 @@ def main():
 	
 	plt.gca().set_aspect('equal', 'box')
 	plt.show()
-	
+
 	optimum_polygons = perform_optimization(field_poly, use_mp=False)
 	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
-	
+
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	tsp_distance_matrix = get_tsp_distance_matrix(optimum_polygons)
+	permutation, distance = solve_tsp(tsp_distance_matrix, exact=False)
+	
+	logger.debug(f"Permutation: {permutation}")
+	logger.debug(f"Total Distance: {distance}")
 	
 	
 if __name__ == "__main__":
