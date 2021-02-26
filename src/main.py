@@ -238,7 +238,7 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
 	
 	
 @logger.trace()
-def get_tsp_cost_matrix(field_poly):
+def get_tsp_distance_matrix(field_poly):
 	all_lines = []
 	
 	if isinstance(field_poly, list):
@@ -262,13 +262,12 @@ def get_tsp_cost_matrix(field_poly):
 			all_lines.append(ls)
 	
 	num_of_lines = len(all_lines)
-	tsp_cost_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
-	logger.debug(f"TSP Cost Matrix Shape: {tsp_cost_matrix.shape}")
+	tsp_distance_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
 	
 	for i in range(num_of_lines * 2):
 		for j in range(num_of_lines * 2):
 			if i == j or i == j + num_of_lines or j == i + num_of_lines:
-				tsp_cost_matrix[i][j] = -1
+				tsp_distance_matrix[i][j] = np.inf
 				continue
 			
 			if i < num_of_lines:
@@ -281,10 +280,11 @@ def get_tsp_cost_matrix(field_poly):
 			else:
 				x2, y2 = list(all_lines[j - num_of_lines].coords)[-1]
 			
-			tsp_cost_matrix[i][j] = np.sqrt(np.power(x2 - x1, 2) + np.power(y2 - y1, 2))
+			tsp_distance_matrix[i][j] = np.sqrt(np.power(x2 - x1, 2) + np.power(y2 - y1, 2))
 	
-	logger.debug(f"TSP Cost Matrix: {tsp_cost_matrix}")
-	return tsp_cost_matrix
+	logger.debug(f"TSP Cost Matrix: {tsp_distance_matrix}")
+	logger.debug(f"TSP Cost Matrix Shape: {tsp_distance_matrix.shape}")
+	return tsp_distance_matrix
 
 
 def main():
@@ -306,7 +306,7 @@ def main():
 	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
 	
 	plot_optimum_polygons(optimum_polygons, field_poly)
-	tsp_cost_matrix = get_tsp_cost_matrix(optimum_polygons)
+	tsp_distance_matrix = get_tsp_distance_matrix(optimum_polygons)
 	
 	
 if __name__ == "__main__":
