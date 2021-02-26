@@ -15,7 +15,7 @@ from lgblkb_tools.geometry import FieldPoly
 cut_len = 25
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 20
+path_width = 70  # 20
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -213,7 +213,7 @@ def perform_optimization(field_poly, use_mp=False):
 @logger.trace()
 def plot_optimum_polygons(optimum_polygons, field_poly):
 	costs = []
-	field_poly.plot()
+	field_poly.plot(lw=1)
 	total_field_count = 0
 	all_lines = []
 	
@@ -240,8 +240,7 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
 	plt.show()
 	
 	
-@logger.trace()
-def get_tsp_distance_matrix(field_poly):
+def get_lines(field_poly):
 	all_lines = []
 	
 	if isinstance(field_poly, list):
@@ -263,33 +262,41 @@ def get_tsp_distance_matrix(field_poly):
 			p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
 			ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
 			all_lines.append(ls)
+			
+	return all_lines
 	
+	
+@logger.trace()
+def get_tsp_distance_matrix(field_poly):
+	all_lines = get_lines(field_poly)
 	num_of_lines = len(all_lines)
-	tsp_distance_matrix = np.zeros([num_of_lines * 2, 2])
+	points_dict = {}
+	tsp_distance_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
 	
 	for i in range(num_of_lines * 2):
 		for j in range(num_of_lines * 2):
-			if i == j or i == j + num_of_lines or j == i + num_of_lines:
+			if i == j:
 				tsp_distance_matrix[i][j] = 0
 				continue
 			
 			if i < num_of_lines:
-				x1, y1 = list(all_lines[i].coords)[0]
+				point_from = np.asarray(list(all_lines[i].coords)[0])
 			else:
-				x1, y1 = list(all_lines[i - num_of_lines].coords)[0]
-			
+				point_from = np.asarray(list(all_lines[i - num_of_lines].coords)[-1])
+				
 			if j < num_of_lines:
-				x2, y2 = list(all_lines[j].coords)[-1]
+				point_to = np.asarray(list(all_lines[j].coords)[0])
 			else:
-				x2, y2 = list(all_lines[j - num_of_lines].coords)[-1]
-			
-			tsp_distance_matrix[i][j] = np.sqrt(np.power(x2 - x1, 2) + np.power(y2 - y1, 2))
+				point_to = np.asarray(list(all_lines[j - num_of_lines].coords)[-1])
+				
+			if i == j + num_of_lines or j == i + num_of_lines:
+				tsp_distance_matrix[i][j] = 1e-10
+			else:
+				tsp_distance_matrix[i][j] = np.linalg.norm(point_to - point_from)
 	
 	# Denotes that the problem is to construct Hamiltonian Path (Not Cycle)
 	tsp_distance_matrix[:, 0] = 0
-	
-	logger.debug(f"TSP Cost Matrix: {tsp_distance_matrix}")
-	logger.debug(f"TSP Cost Matrix Shape: {tsp_distance_matrix.shape}")
+	logger.debug(f"TSP Distance Matrix Shape: {tsp_distance_matrix.shape}")
 	return tsp_distance_matrix
 
 
@@ -302,12 +309,39 @@ def solve_tsp(tsp_distance_matrix, exact=False):
 	return permutation, distance
 
 
+def plot_directions(field_poly, permutation, optimum_polygons):
+	field_poly.plot(lw=1)
+	all_lines = get_lines(optimum_polygons)
+	num_of_lines = len(all_lines)
+	
+	for i in range(len(permutation) - 1):
+		idx_from, idx_to = permutation[i], permutation[i + 1]
+		
+		if idx_from < num_of_lines:
+			x1, y1 = list(all_lines[idx_from].coords)[0]
+		else:
+			x1, y1 = list(all_lines[idx_from - num_of_lines].coords)[-1]
+			
+		if idx_to < num_of_lines:
+			x2, y2 = list(all_lines[idx_to].coords)[0]
+		else:
+			x2, y2 = list(all_lines[idx_to - num_of_lines].coords)[-1]
+			
+		if i == 0:
+			plt.plot((x1, x2), (y1, y2), lw=3, c='g')
+		else:
+			plt.plot((x1, x2), (y1, y2), lw=1, c='r')
+	
+	plt.gca().set_aspect('equal', 'box')
+	plt.show()
+
+
 def main():
-	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	                                                                                         [200, 800],
-	                                                                                         [800, 800],
-	                                                                                         [800, 200]]])).plot()
-	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	#                                                                                          [200, 800],
+	#                                                                                          [800, 800],
+	#                                                                                          [800, 200]]])).plot()
+	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 	logger.info(f"initial_lines_count: {initial_lines_count}")
@@ -323,8 +357,8 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	tsp_distance_matrix = get_tsp_distance_matrix(optimum_polygons)
 	permutation, distance = solve_tsp(tsp_distance_matrix, exact=False)
+	plot_directions(field_poly, permutation, optimum_polygons)
 	
-	logger.debug(f"Permutation: {permutation}")
 	logger.debug(f"Total Distance: {distance}")
 	
 	
