@@ -5,9 +5,6 @@ import more_itertools as mi
 import numpy as np
 import shapely.geometry as shg
 
-from python_tsp.exact import solve_tsp_dynamic_programming
-from python_tsp.heuristics import solve_tsp_simulated_annealing
-
 from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
@@ -266,15 +263,6 @@ def get_lines(field_poly):
 	return all_lines
 
 
-def solve_tsp(tsp_distance_matrix, exact=False):
-	if exact:
-		permutation, distance = solve_tsp_dynamic_programming(tsp_distance_matrix)
-	else:
-		permutation, distance = solve_tsp_simulated_annealing(tsp_distance_matrix)
-	
-	return permutation, distance
-
-
 def plot_directions(field_poly, permutation, optimum_polygons):
 	field_poly.plot(lw=1)
 	all_lines = get_lines(optimum_polygons)
@@ -331,23 +319,7 @@ def polygons_to_graph(optimum_polygons, show=False):
 	for edge in E:
 		V.add(edge[0])
 		V.add(edge[1])
-		
-	for point1 in V:
-		for point2 in V:
-			for edge in E:
-				if point1 != point2:
-					line = shg.LineString(edge)
-					p1 = shg.Point(point1)
-					p2 = shg.Point(point2)
-					
-					if line.distance(p1) < 1e-8 and line.distance(p2) < 1e-8:
-						E.add((point1, point2))
-						E.remove(edge)
-						
-						if show:
-							plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='g')
-							
-						break
+		plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
 						
 	if show:
 		for point in V:
@@ -385,23 +357,32 @@ def get_distance_matrix(V, E, IE):
 		else:
 			distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
 	
-	for i in range(len(V)):
-		for j in range(len(V)):
-			if distance_matrix[i][j] == np.inf and i != j:
-				distance_matrix[i][j] = np.linalg.norm(np.asarray(mapping[j]) - np.asarray(mapping[i]))
+	for point1 in V:
+		for point2 in V:
+			for edge in E:
+				if point1 != point2:
+					line = shg.LineString(edge)
+					p1 = shg.Point(point1)
+					p2 = shg.Point(point2)
+					node_from = reverse_mapping[point1]
+					node_to = reverse_mapping[point2]
+					red_from = reverse_mapping[edge[0]]
+					red_to = reverse_mapping[edge[1]]
+					
+					if line.distance(p1) < 1e-8 and line.distance(p2) < 1e-8:
+						distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(point2) - np.asarray(point1))
+						distance_matrix[red_from][red_to] = np.inf
 	
-	# Denotes that the problem is to construct Hamiltonian Path (Not Cycle)
-	distance_matrix[:, 0] = 0
 	logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
 	return distance_matrix, mapping
 
 
 def main():
-	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	                                                                                         [200, 800],
-	                                                                                         [800, 800],
-	                                                                                         [800, 200]]])).plot()
-	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	#                                                                                          [200, 800],
+	#                                                                                          [800, 800],
+	#                                                                                          [800, 200]]])).plot()
+	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 	logger.info(f"initial_lines_count: {initial_lines_count}")
@@ -417,6 +398,9 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	V, E, IE = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, IE)
+	
+	for row in distance_matrix:
+		print(row)
 	
 	
 if __name__ == "__main__":
