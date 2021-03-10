@@ -12,10 +12,10 @@ from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
 
-cut_len = 25
+cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 70  # 20
+path_width = 75  # 20
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -264,39 +264,6 @@ def get_lines(field_poly):
 			all_lines.append(ls)
 			
 	return all_lines
-	
-	
-@logger.trace()
-def get_tsp_distance_matrix(field_poly):
-	all_lines = get_lines(field_poly)
-	num_of_lines = len(all_lines)
-	tsp_distance_matrix = np.zeros([num_of_lines * 2, num_of_lines * 2])
-	
-	for i in range(num_of_lines * 2):
-		for j in range(num_of_lines * 2):
-			if i == j:
-				tsp_distance_matrix[i][j] = 0
-				continue
-			
-			if i < num_of_lines:
-				point_from = np.asarray(list(all_lines[i].coords)[0])
-			else:
-				point_from = np.asarray(list(all_lines[i - num_of_lines].coords)[-1])
-				
-			if j < num_of_lines:
-				point_to = np.asarray(list(all_lines[j].coords)[0])
-			else:
-				point_to = np.asarray(list(all_lines[j - num_of_lines].coords)[-1])
-				
-			if i == j + num_of_lines or j == i + num_of_lines:
-				tsp_distance_matrix[i][j] = 1e-10
-			else:
-				tsp_distance_matrix[i][j] = np.linalg.norm(point_to - point_from)
-	
-	# Denotes that the problem is to construct Hamiltonian Path (Not Cycle)
-	tsp_distance_matrix[:, 0] = 0
-	logger.debug(f"TSP Distance Matrix Shape: {tsp_distance_matrix.shape}")
-	return tsp_distance_matrix
 
 
 def solve_tsp(tsp_distance_matrix, exact=False):
@@ -333,14 +300,108 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 	
 	plt.gca().set_aspect('equal', 'box')
 	plt.show()
+	
+	
+def polygons_to_graph(optimum_polygons, show=False):
+	V = set()
+	E = set()
+	IE = set()
+	optimum_polygon_lines = get_lines(optimum_polygons)
+		
+	for polygon in optimum_polygons:
+		for line in polygon.exterior_lines:
+			ls = shg.LineString(line)
+			p1 = ls.interpolate(cut_len).coords[0]
+			p2 = ls.interpolate(int(ls.length - cut_len)).coords[0]
+			ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
+			ls_x, ls_y = ls.xy
+			ls_x, ls_y = tuple([ls_x[0], ls_y[0]]), tuple([ls_x[1], ls_y[1]])
+			E.add((ls_x, ls_y))
+	
+	for line in optimum_polygon_lines:
+		ls = shg.LineString(line)
+		p1 = ls.interpolate(cut_len).coords[0]
+		p2 = ls.interpolate(int(line.length - cut_len)).coords[0]
+		ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
+		ls_x, ls_y = ls.xy
+		ls_x, ls_y = tuple([ls_x[0], ls_y[0]]), tuple([ls_x[1], ls_y[1]])
+		E.add((ls_x, ls_y))
+		IE.add((ls_x, ls_y))
+	
+	for edge in E:
+		V.add(edge[0])
+		V.add(edge[1])
+		
+	for point1 in V:
+		for point2 in V:
+			for edge in E:
+				if point1 != point2:
+					line = shg.LineString(edge)
+					p1 = shg.Point(point1)
+					p2 = shg.Point(point2)
+					
+					if line.distance(p1) < 1e-8 and line.distance(p2) < 1e-8:
+						E.add((point1, point2))
+						E.remove(edge)
+						
+						if show:
+							plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='g')
+							
+						break
+						
+	if show:
+		for point in V:
+			plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
+	
+	if show:
+		plt.gca().set_aspect('equal', 'box')
+		plt.show()
+		
+	V = sorted(V)
+	E = sorted(E)
+	IE = sorted(IE)
+		
+	return V, E, IE
+
+
+@logger.trace()
+def get_distance_matrix(V, E, IE):
+	num_nodes = len(V)
+	mapping = {}
+	reverse_mapping = {}
+	distance_matrix = np.ones([num_nodes, num_nodes]) * np.inf
+	
+	for i in range(len(V)):
+		mapping[i] = V[i]
+		reverse_mapping[V[i]] = i
+
+	for edge in E:
+		node_from = reverse_mapping[edge[0]]
+		node_to = reverse_mapping[edge[1]]
+		
+		if edge in IE:
+			distance_matrix[node_from][node_to] = 0
+			distance_matrix[node_to][node_from] = 0
+		else:
+			distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
+	
+	for i in range(len(V)):
+		for j in range(len(V)):
+			if distance_matrix[i][j] == np.inf and i != j:
+				distance_matrix[i][j] = np.linalg.norm(np.asarray(mapping[j]) - np.asarray(mapping[i]))
+	
+	# Denotes that the problem is to construct Hamiltonian Path (Not Cycle)
+	distance_matrix[:, 0] = 0
+	logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
+	return distance_matrix, mapping
 
 
 def main():
-	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	#                                                                                          [200, 800],
-	#                                                                                          [800, 800],
-	#                                                                                          [800, 200]]])).plot()
-	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	                                                                                         [200, 800],
+	                                                                                         [800, 800],
+	                                                                                         [800, 200]]])).plot()
+	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 	logger.info(f"initial_lines_count: {initial_lines_count}")
@@ -354,11 +415,8 @@ def main():
 	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
 
 	plot_optimum_polygons(optimum_polygons, field_poly)
-	tsp_distance_matrix = get_tsp_distance_matrix(optimum_polygons)
-	permutation, distance = solve_tsp(tsp_distance_matrix, exact=False)
-	plot_directions(field_poly, permutation, optimum_polygons)
-	
-	logger.debug(f"Total Distance: {distance}")
+	V, E, IE = polygons_to_graph(optimum_polygons, show=True)
+	distance_matrix, mapping = get_distance_matrix(V, E, IE)
 	
 	
 if __name__ == "__main__":
