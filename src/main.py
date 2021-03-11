@@ -315,6 +315,7 @@ def polygons_to_graph(optimum_polygons, show=False):
 		ls_x, ls_y = tuple([ls_x[0], ls_y[0]]), tuple([ls_x[1], ls_y[1]])
 		E.add((ls_x, ls_y))
 		R.add((ls_x, ls_y))
+		R.add((ls_y, ls_x))
 
 	real_edges = set()
 	
@@ -407,7 +408,19 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	V, E, R = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, R)
-	
-	
+
+	i, j = np.where(distance_matrix != np.inf)
+
+	for row, col in zip(i, j):
+		p1 = mapping[row]
+		p2 = mapping[col]
+		xs = [p1[0], p2[0]]
+		ys = [p1[1], p2[1]]
+		plt.plot(xs, ys)
+
+	plt.gca().set_aspect('equal', 'box')
+	plt.show()
+
+
 if __name__ == "__main__":
 	main()
