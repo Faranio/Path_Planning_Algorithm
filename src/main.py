@@ -12,7 +12,7 @@ from lgblkb_tools.geometry import FieldPoly
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 75  # 20
+path_width = 150  # 20
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -315,11 +315,44 @@ def polygons_to_graph(optimum_polygons, show=False):
 		ls_x, ls_y = tuple([ls_x[0], ls_y[0]]), tuple([ls_x[1], ls_y[1]])
 		E.add((ls_x, ls_y))
 		IE.add((ls_x, ls_y))
+
+	temp_edges = set()
+	real_edges = set()
 	
 	for edge in E:
 		V.add(edge[0])
 		V.add(edge[1])
+		real_edges.add(edge)
 		plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
+
+	for point1 in V:
+		for point2 in V:
+			for edge in E:
+				if point1 != point2:
+					ls1 = shg.LineString(edge)
+					p1 = shg.Point(point1)
+					p2 = shg.Point(point2)
+
+					if ls1.distance(p1) < 1e-8 and ls1.distance(p2) < 1e-8:
+						ls = (point1, point2)
+						real_edges.add(ls)
+
+	for edge1 in real_edges:
+		ls1 = shg.LineString(edge1)
+		add = True
+
+		for edge2 in real_edges:
+			if edge1 != edge2:
+				p1 = shg.Point(edge2[0])
+				p2 = shg.Point(edge2[1])
+				ls2 = shg.LineString([p1, p2])
+				if ls1.distance(p1) < 1e-8 and ls1.distance(p2) < 1e-8:
+					if ls1.length > ls2.length:
+						add = False
+						break
+
+		if add:
+			temp_edges.add(edge1)
 						
 	if show:
 		for point in V:
@@ -328,6 +361,8 @@ def polygons_to_graph(optimum_polygons, show=False):
 	if show:
 		plt.gca().set_aspect('equal', 'box')
 		plt.show()
+
+	E = temp_edges
 		
 	V = sorted(V)
 	E = sorted(E)
@@ -353,36 +388,20 @@ def get_distance_matrix(V, E, IE):
 		
 		if edge in IE:
 			distance_matrix[node_from][node_to] = 0
-			distance_matrix[node_to][node_from] = 0
 		else:
 			distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
-	
-	for point1 in V:
-		for point2 in V:
-			for edge in E:
-				if point1 != point2:
-					line = shg.LineString(edge)
-					p1 = shg.Point(point1)
-					p2 = shg.Point(point2)
-					node_from = reverse_mapping[point1]
-					node_to = reverse_mapping[point2]
-					red_from = reverse_mapping[edge[0]]
-					red_to = reverse_mapping[edge[1]]
-					
-					if line.distance(p1) < 1e-8 and line.distance(p2) < 1e-8:
-						distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(point2) - np.asarray(point1))
-						distance_matrix[red_from][red_to] = np.inf
-	
+
+	distance_matrix[:, 0] = 0
 	logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
 	return distance_matrix, mapping
 
 
 def main():
-	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	#                                                                                          [200, 800],
-	#                                                                                          [800, 800],
-	#                                                                                          [800, 200]]])).plot()
-	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	                                                                                         [200, 800],
+	                                                                                         [800, 800],
+	                                                                                         [800, 200]]])).plot()
+	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 	logger.info(f"initial_lines_count: {initial_lines_count}")
@@ -398,9 +417,7 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	V, E, IE = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, IE)
-	
-	for row in distance_matrix:
-		print(row)
+	print(distance_matrix)
 	
 	
 if __name__ == "__main__":
