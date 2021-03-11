@@ -293,7 +293,7 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 def polygons_to_graph(optimum_polygons, show=False):
 	V = set()
 	E = set()
-	IE = set()
+	R = set()
 	optimum_polygon_lines = get_lines(optimum_polygons)
 		
 	for polygon in optimum_polygons:
@@ -314,9 +314,8 @@ def polygons_to_graph(optimum_polygons, show=False):
 		ls_x, ls_y = ls.xy
 		ls_x, ls_y = tuple([ls_x[0], ls_y[0]]), tuple([ls_x[1], ls_y[1]])
 		E.add((ls_x, ls_y))
-		IE.add((ls_x, ls_y))
+		R.add((ls_x, ls_y))
 
-	temp_edges = set()
 	real_edges = set()
 	
 	for edge in E:
@@ -337,22 +336,18 @@ def polygons_to_graph(optimum_polygons, show=False):
 						ls = (point1, point2)
 						real_edges.add(ls)
 
-	for edge1 in real_edges:
+	for edge1 in real_edges.copy():
 		ls1 = shg.LineString(edge1)
-		add = True
 
-		for edge2 in real_edges:
+		for edge2 in real_edges.copy():
 			if edge1 != edge2:
 				p1 = shg.Point(edge2[0])
 				p2 = shg.Point(edge2[1])
 				ls2 = shg.LineString([p1, p2])
 				if ls1.distance(p1) < 1e-8 and ls1.distance(p2) < 1e-8:
 					if ls1.length > ls2.length:
-						add = False
+						real_edges.remove(edge1)
 						break
-
-		if add:
-			temp_edges.add(edge1)
 						
 	if show:
 		for point in V:
@@ -362,17 +357,17 @@ def polygons_to_graph(optimum_polygons, show=False):
 		plt.gca().set_aspect('equal', 'box')
 		plt.show()
 
-	E = temp_edges
+	E = real_edges
 		
 	V = sorted(V)
 	E = sorted(E)
-	IE = sorted(IE)
+	R = sorted(R)
 		
-	return V, E, IE
+	return V, E, R
 
 
 @logger.trace()
-def get_distance_matrix(V, E, IE):
+def get_distance_matrix(V, E, R):
 	num_nodes = len(V)
 	mapping = {}
 	reverse_mapping = {}
@@ -386,12 +381,11 @@ def get_distance_matrix(V, E, IE):
 		node_from = reverse_mapping[edge[0]]
 		node_to = reverse_mapping[edge[1]]
 		
-		if edge in IE:
+		if edge in R:
 			distance_matrix[node_from][node_to] = 0
 		else:
 			distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
 
-	distance_matrix[:, 0] = 0
 	logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
 	return distance_matrix, mapping
 
@@ -404,20 +398,15 @@ def main():
 	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
-	logger.info(f"initial_lines_count: {initial_lines_count}")
-	logger.info(f"Initial area_cost_ratio: {field_poly.area_cost_ratio}")
+
 	field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
-	
 	plt.gca().set_aspect('equal', 'box')
 	plt.show()
 
 	optimum_polygons = perform_optimization(field_poly, use_mp=False)
-	logger.debug(f"Number of polygons: {len(optimum_polygons)}")
-
 	plot_optimum_polygons(optimum_polygons, field_poly)
-	V, E, IE = polygons_to_graph(optimum_polygons, show=True)
-	distance_matrix, mapping = get_distance_matrix(V, E, IE)
-	print(distance_matrix)
+	V, E, R = polygons_to_graph(optimum_polygons, show=True)
+	distance_matrix, mapping = get_distance_matrix(V, E, R)
 	
 	
 if __name__ == "__main__":
