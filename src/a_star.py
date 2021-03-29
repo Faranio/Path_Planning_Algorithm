@@ -61,6 +61,7 @@ def a_star_search(graph, heuristics, start, end):
     open.append(start_node)
 
     while len(open) > 0:
+        print(open)
         open.sort()
         current_node = open.pop(0)
         closed.append(current_node)
@@ -69,10 +70,10 @@ def a_star_search(graph, heuristics, start, end):
             path = []
 
             while current_node != start_node:
-                path.append(current_node.name + ': ' + str(current_node.g))
+                path.append([current_node.name, str(current_node.g)])
                 current_node = current_node.parent
 
-            path.append(start_node.name + ': ' + str(start_node.g))
+            path.append([start_node.name, str(start_node.g)])
             return path[::-1]
 
         neighbors = graph.get(current_node.name)
@@ -106,11 +107,7 @@ def find_path(distance_matrix, mapping, start, end):
 
     for row in i:
         p = mapping[row]
-
-        if str(p) == str(end):
-            heuristics[str(p)] = 0
-        else:
-            heuristics[str(p)] = np.linalg.norm(np.asarray(end) - np.asarray(p))
+        heuristics[str(p)] = 0
 
     path = a_star_search(graph, heuristics, str(start), str(end))
     return path

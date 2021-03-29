@@ -2,7 +2,6 @@ import collections
 import itertools
 import matplotlib.pyplot as plt
 import more_itertools as mi
-import numpy as np
 import shapely.geometry as shg
 
 from lgblkb_tools import logger
@@ -14,7 +13,8 @@ from src.a_star import *
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 120  # 20
+path_width = 80  # 20
+required_edge_cost = -100000
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -385,7 +385,7 @@ def get_distance_matrix(V, E, R):
 		node_to = reverse_mapping[edge[1]]
 		
 		if edge in R:
-			distance_matrix[node_from][node_to] = 0
+			distance_matrix[node_from][node_to] = required_edge_cost
 		else:
 			distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
 
@@ -394,11 +394,11 @@ def get_distance_matrix(V, E, R):
 
 
 def main():
-	field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-	                                                                                         [200, 800],
-	                                                                                         [800, 800],
-	                                                                                         [800, 200]]])).plot()
-	# field_poly = FieldPoly.synthesize(cities_count=9, hole_count=1, hole_cities_count=5, poly_extent=1000)
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
+	#                                                                                          [200, 800],
+	#                                                                                          [800, 800],
+	#                                                                                          [800, 200]]])).plot()
+	field_poly = FieldPoly.synthesize(cities_count=9, hole_count=0, hole_cities_count=0, poly_extent=1000)
 	
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 
@@ -410,8 +410,30 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	V, E, R = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, R)
-	path = find_path(distance_matrix, mapping, start=(0.0, 0.0), end=(1000.0, 1000.0))
+	print(V[0], V[-1])
+
+	for i in range(len(distance_matrix)):
+		print(mapping[i], distance_matrix[i])
+
+	logger.debug(f"mapping: {mapping}")
+	path = find_path(distance_matrix, mapping, start=V[0], end=V[-1])
 	logger.debug(f"path: {path}")
+
+	for point in V:
+		plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
+
+	for edge in E:
+		plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
+
+	for i in range(len(path) - 1):
+		p1 = tuple(map(float, path[i][0][1:-1].split(',')))
+		p2 = tuple(map(float, path[i+1][0][1:-1].split(',')))
+		xs = [p1[0], p2[0]]
+		ys = [p1[1], p2[1]]
+		plt.plot(xs, ys, c='red', linewidth=3)
+
+	plt.gca().set_aspect('equal', 'box')
+	plt.show()
 
 
 if __name__ == "__main__":
