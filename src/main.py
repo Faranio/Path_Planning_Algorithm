@@ -9,10 +9,12 @@ from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
 
+from src.a_star import *
+
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 150  # 20
+path_width = 120  # 20
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -408,18 +410,8 @@ def main():
 	plot_optimum_polygons(optimum_polygons, field_poly)
 	V, E, R = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, R)
-
-	i, j = np.where(distance_matrix != np.inf)
-
-	for row, col in zip(i, j):
-		p1 = mapping[row]
-		p2 = mapping[col]
-		xs = [p1[0], p2[0]]
-		ys = [p1[1], p2[1]]
-		plt.plot(xs, ys)
-
-	plt.gca().set_aspect('equal', 'box')
-	plt.show()
+	path = find_path(distance_matrix, mapping, start=(0.0, 0.0), end=(1000.0, 1000.0))
+	logger.debug(f"path: {path}")
 
 
 if __name__ == "__main__":
