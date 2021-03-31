@@ -13,8 +13,8 @@ from src.a_star import *
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 40  # 20
-required_edge_cost = -100000
+path_width = 50  # 20
+required_edge_cost = -1000
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -303,21 +303,17 @@ def polygons_to_graph(optimum_polygons, show=False):
 			ls = shg.LineString(line)
 			p1 = ls.coords[0]
 			p2 = ls.coords[1]
-			ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
-			ls_x, ls_y = ls.xy
-			ls_x, ls_y = tuple([np.floor(ls_x[0]), np.floor(ls_y[0])]), tuple([np.floor(ls_x[1]), np.floor(ls_y[1])])
-			E.add((ls_x, ls_y))
+			E.add((p1, p2))
+			E.add((p2, p1))
 	
 	for line in optimum_polygon_lines:
 		ls = shg.LineString(line)
-		p1 = ls.interpolate(cut_len).coords[0]
-		p2 = ls.interpolate(int(line.length - cut_len)).coords[0]
-		ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
-		ls_x, ls_y = ls.xy
-		ls_x, ls_y = tuple([np.floor(ls_x[0]), np.floor(ls_y[0])]), tuple([np.floor(ls_x[1]), np.floor(ls_y[1])])
-		E.add((ls_x, ls_y))
-		R.add((ls_x, ls_y))
-		R.add((ls_y, ls_x))
+		p1 = ls.coords[0]
+		p2 = ls.coords[1]
+		E.add((p1, p2))
+		E.add((p2, p1))
+		R.add((p1, p2))
+		R.add((p2, p1))
 
 	real_edges = set()
 	
@@ -327,21 +323,19 @@ def polygons_to_graph(optimum_polygons, show=False):
 		real_edges.add(edge)
 		plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
 
-	############################### MAIN CONCERN ##############################################
-
 	for point1 in V:
 		for point2 in V:
 			for edge in E:
 				if point1 != point2:
-					ls1 = shg.LineString(edge)
+					ls = shg.LineString(edge)
 					p1 = shg.Point(point1)
 					p2 = shg.Point(point2)
 
-					if ls1.distance(p1) < 1e-15 and ls1.distance(p2) < 1e-15:
-						point1 = (np.floor(point1[0]), np.floor(point1[1]))
-						point2 = (np.floor(point2[0]), np.floor(point2[1]))
-						ls = (point1, point2)
-						real_edges.add(ls)
+					if ls.distance(p1) < 1e-3 and ls.distance(p2) < 1e-3:
+						line1 = (point1, point2)
+						line2 = (point2, point1)
+						real_edges.add(line1)
+						real_edges.add(line2)
 
 	for edge1 in real_edges.copy():
 		ls1 = shg.LineString(edge1)
@@ -351,12 +345,10 @@ def polygons_to_graph(optimum_polygons, show=False):
 				p1 = shg.Point(edge2[0])
 				p2 = shg.Point(edge2[1])
 				ls2 = shg.LineString([p1, p2])
-				if ls1.distance(p1) < 1e-15 and ls1.distance(p2) < 1e-15:
+				if ls1.distance(p1) < 1e-3 and ls1.distance(p2) < 1e-3:
 					if ls1.length > ls2.length:
 						real_edges.remove(edge1)
 						break
-
-	############################### MAIN CONCERN ##############################################
 						
 	if show:
 		for point in V:
@@ -404,7 +396,27 @@ def main():
 	#                                                                                          [200, 800],
 	#                                                                                          [800, 800],
 	#                                                                                          [800, 200]]])).plot()
-	field_poly = FieldPoly.synthesize(cities_count=4, hole_count=0, hole_cities_count=0, poly_extent=1000)
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 400], [600, 400], [600, 0], [1000, 0], [1000, 600],
+	# 									 [800, 700], [750, 800], [1000, 750], [1000, 1000], [0, 1000], [0, 500],
+	# 									[500, 600], [500, 500], [0, 400]])).plot()
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [575, 0], [575, 500], [425, 500], [425, 300], [500, 300], [500, 200],
+	# 									[300, 200], [300, 650], [700, 650], [700, 0], [1000, 0], [1000, 1000],
+	# 									[0, 1000]], holes=[[[350, 850], [400, 750], [600, 850], [450, 925]]])).plot()
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[100, 400], [200, 300],
+	# 																						 [300, 300], [350, 450],
+	# 																						 [300, 500], [150, 450]],
+	# 																						[[750, 300], [750, 100],
+	# 																						 [850, 100], [850, 300]],
+	# 																						 [[400, 700], [850, 500],
+	# 																						  [950, 600], [900, 650],
+	# 																						  [850, 600], [600, 700],
+	# 																						  [700, 800], [600, 900]]])).plot()
+	field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 550], [200, 550], [200, 650], [500, 650], [500, 0],
+										[1000, 0], [1000, 450], [700, 450], [700, 550], [1000, 550], [1000, 1000],
+										[0, 1000]], holes=[[[200, 800], [300, 700], [600, 800], [300, 900]],
+														   [[700, 900], [700, 700], [800, 700], [800, 900]]])).plot()
+	# field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]])).plot()
+	# field_poly = FieldPoly.synthesize(cities_count=4, hole_count=0, hole_cities_count=0, poly_extent=1000)
 
 	initial_lines_count = get_field_lines_count(field_poly, show=True)
 
@@ -417,16 +429,14 @@ def main():
 	V, E, R = polygons_to_graph(optimum_polygons, show=True)
 	distance_matrix, mapping = get_distance_matrix(V, E, R)
 
-	print(V[1], V[-2])
+	logger.debug(f"Length of V: {len(V)}")
+	logger.debug(f"Length of E: {len(E)}")
+	logger.debug(f"Length of R: {len(R)}")
 
-	path = find_path(distance_matrix, mapping, start=V[1], end=V[-2])
-
-	logger.debug(f"path: {path}")
+	path = find_path(distance_matrix, mapping, start=V[0], end=V[-1])
 
 	for point in V:
 		plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
-
-	print(E)
 
 	for edge in E:
 		plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
@@ -436,7 +446,7 @@ def main():
 		p2 = tuple(map(float, path[i+1][0][1:-1].split(',')))
 		xs = [p1[0], p2[0]]
 		ys = [p1[1], p2[1]]
-		plt.plot(xs, ys, c='red', linewidth=3)
+		plt.plot(xs, ys, c='cyan', linewidth=3)
 
 	plt.gca().set_aspect('equal', 'box')
 	plt.show()
