@@ -76,6 +76,8 @@ def a_star_search(graph, heuristics, start, end):
             return path[::-1]
 
         neighbors = graph.get(current_node.name)
+        # print(f"Current node: {current_node}")
+        # print(f"Neighbors: {neighbors}\n\n")
 
         for key, value in neighbors.items():
             neighbor = Node(key, current_node)
@@ -104,6 +106,7 @@ def find_path(distance_matrix, mapping, start, end):
         p2 = mapping[col]
         graph.connect(str(p1), str(p2), distance_matrix[row][col])
 
+    # Setting heuristic values
     for row in i:
         p = mapping[row]
         heuristics[str(p)] = 0

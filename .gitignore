@@ -1,0 +1,4 @@
+venv
+deliverables
+.idea
+src/__pycache__/
