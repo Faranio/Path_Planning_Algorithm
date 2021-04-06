@@ -236,6 +236,7 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
     logger.info(f"Final Area Cost Ratio: {final_acr}")
     logger.info(f"Total Field Count: {total_field_count}")
     plt.gca().set_aspect('equal', 'box')
+    plt.grid(axis='both')
     plt.show()
 
 
@@ -293,14 +294,32 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 
 
 def get_extrapolated_line(p1, p2):
-    EXTRAPOL_RATIO = 1.01
+    EXTRAPOL_RATIO = 1.1
     a = p1
     b = (p1[0] + EXTRAPOL_RATIO * (p2[0] - p1[0]), p1[1] + EXTRAPOL_RATIO * (p2[1] - p1[1]))
     return shg.LineString([a, b])
 
 
-def polygons_to_graph(optimum_polygons, show=False):
+def get_intersections(ls, E):
+    intersection_points = set()
+
+    for ext_line in E:
+        ext_ls = shg.LineString(ext_line)
+        temp = ls.intersection(ext_ls)
+
+        if not temp.is_empty:
+            intersection_points.add(temp.coords[0])
+
+    return intersection_points
+
+
+def segments(curve):
+    return list(map(shg.LineString, zip(curve.coords[:-1], curve.coords[1:])))
+
+
+def polygons_to_graph(optimum_polygons, distance_threshold=1e-4, show=False):
     V, E, R = set(), set(), set()
+    exterior_lines = set()
     optimum_polygon_lines = get_lines(optimum_polygons)
 
     for polygon in optimum_polygons:
@@ -308,115 +327,64 @@ def polygons_to_graph(optimum_polygons, show=False):
             ls = shg.LineString(line)
             p1 = ls.coords[0]
             p2 = ls.coords[1]
-            E.add((p1, p2))
-            E.add((p2, p1))
+            exterior_lines.add((p1, p2))
+            V.add(p1)
+            V.add(p2)
 
     for line in optimum_polygon_lines:
         ls = shg.LineString(line)
         p1 = ls.coords[0]
         p2 = ls.coords[1]
         ls = get_extrapolated_line(p1, p2)
-        p1 = ls.coords[0]
-        p2 = ls.coords[1]
+        p1, p2 = ls.coords
+        ls = get_extrapolated_line(p2, p1)
+        intersections = get_intersections(ls, exterior_lines)
+        points = []
 
-        for ext_line in E:
-            ext_ls = shg.LineString(ext_line)
-            temp = ls.intersection(ext_ls)
+        for i in intersections:
+            points.append(i)
 
-            # if temp
+        V.add(points[0])
+        V.add(points[1])
+        R.add((points[0], points[1]))
+        R.add((points[1], points[0]))
+        E.add((points[0], points[1]))
+        E.add((points[1], points[0]))
 
-        print("\n")
+    for ext_edge in exterior_lines:
+        ext_ls = shg.LineString(ext_edge)
+        points = []
+        for point in V:
+            p1 = shg.Point(point)
+
+            if ext_ls.distance(p1) < distance_threshold:
+                points.append(point)
+
+        points = sorted(points)
+        temp = shg.LineString(points)
+        temp = segments(temp)
+
+        for line in temp:
+            p1, p2 = line.coords[0], line.coords[1]
+            E.add((p1, p2))
+            E.add((p2, p1))
+
+    logger.debug(f"Length of V: {len(V)}")
+    logger.debug(f"Length of E: {len(E)}")
+    logger.debug(f"Length of R: {len(R)}")
+
+    if show:
+        for edge in E:
+            plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
+
+        for point in V:
+            plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
+
+        plt.gca().set_aspect('equal', 'box')
+        plt.grid(axis='both')
+        plt.show()
 
     return V, E, R
-
-        # E.add((p1, p2))
-        # E.add((p2, p1))
-        # R.add((p1, p2))
-        # R.add((p2, p1))
-
-    # for edge in E:
-    #     V.add(edge[0])
-    #     V.add(edge[1])
-    #
-    #     if show:
-    #         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
-    #
-    # return V, E, R
-
-
-# def polygons_to_graph(optimum_polygons, show=False):
-#     V = set()
-#     E = set()
-#     R = set()
-#     optimum_polygon_lines = get_lines(optimum_polygons)
-#
-#     for polygon in optimum_polygons:
-#         for line in polygon.exterior_lines:
-#             ls = shg.LineString(line)
-#             p1 = ls.coords[0]
-#             p2 = ls.coords[1]
-#             E.add((p1, p2))
-#             E.add((p2, p1))
-#
-#     for line in optimum_polygon_lines:
-#         ls = shg.LineString(line)
-#         p1 = ls.coords[0]
-#         p2 = ls.coords[1]
-#         E.add((p1, p2))
-#         E.add((p2, p1))
-#         R.add((p1, p2))
-#         R.add((p2, p1))
-#
-#     real_edges = set()
-#
-#     for edge in E:
-#         V.add(edge[0])
-#         V.add(edge[1])
-#         real_edges.add(edge)
-#         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
-#
-#     for point1 in V:
-#         for point2 in V:
-#             for edge in E:
-#                 if point1 != point2:
-#                     ls = shg.LineString(edge)
-#                     p1 = shg.Point(point1)
-#                     p2 = shg.Point(point2)
-#
-#                     if ls.distance(p1) < 1e-3 and ls.distance(p2) < 1e-3:
-#                         line1 = (point1, point2)
-#                         line2 = (point2, point1)
-#                         real_edges.add(line1)
-#                         real_edges.add(line2)
-#
-#     for edge1 in real_edges.copy():
-#         ls1 = shg.LineString(edge1)
-#
-#         for edge2 in real_edges.copy():
-#             if edge1 != edge2:
-#                 p1 = shg.Point(edge2[0])
-#                 p2 = shg.Point(edge2[1])
-#                 ls2 = shg.LineString([p1, p2])
-#                 if ls1.distance(p1) < 1e-3 and ls1.distance(p2) < 1e-3:
-#                     if ls1.length > ls2.length:
-#                         real_edges.remove(edge1)
-#                         break
-#
-#     if show:
-#         for point in V:
-#             plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
-#
-#     if show:
-#         plt.gca().set_aspect('equal', 'box')
-#         plt.show()
-#
-#     E = real_edges
-#
-#     V = sorted(V)
-#     E = sorted(E)
-#     R = sorted(R)
-#
-#     return V, E, R
 
 
 @logger.trace()
@@ -483,6 +451,7 @@ def main():
 
     field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
     plt.gca().set_aspect('equal', 'box')
+    plt.grid(axis='both')
     plt.show()
 
     optimum_polygons = perform_optimization(field_poly, use_mp=False)
