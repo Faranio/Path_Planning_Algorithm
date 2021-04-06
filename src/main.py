@@ -13,7 +13,7 @@ from src.a_star import *
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 150  # 20
+path_width = 40 # 20
 required_edge_cost = -1000
 search_loop_limit = 3e5
 workers_count = 4
@@ -193,7 +193,7 @@ def decompose_from_points(field_poly: FieldPoly, points=None, use_mp=False, show
 
 @logger.trace()
 def perform_optimization(field_poly, use_mp=False):
-    polygons = decompose_from_points(field_poly, field_poly.get_outer_points(), use_mp=False, show=False)
+    polygons = decompose_from_points(field_poly, field_poly.get_outer_points(), use_mp=use_mp, show=False)
     optimum_polygons = [polygons[0]]
 
     if use_mp:
@@ -384,6 +384,8 @@ def polygons_to_graph(optimum_polygons, distance_threshold=1e-4, show=False):
         plt.grid(axis='both')
         plt.show()
 
+    V, E, R = list(V), list(E), list(R)
+
     return V, E, R
 
 
@@ -412,7 +414,7 @@ def get_distance_matrix(V, E, R):
 
 
 def main():
-    region = 0
+    region = 5
 
     if region == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
@@ -445,7 +447,7 @@ def main():
     elif region == 6:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]])).plot()
     else:
-        field_poly = FieldPoly.synthesize(cities_count=4, hole_count=0, hole_cities_count=0, poly_extent=1000)
+        field_poly = FieldPoly.synthesize(cities_count=4, hole_count=1, hole_cities_count=4, poly_extent=1000)
 
     initial_lines_count = get_field_lines_count(field_poly, show=True)
 
@@ -454,7 +456,7 @@ def main():
     plt.grid(axis='both')
     plt.show()
 
-    optimum_polygons = perform_optimization(field_poly, use_mp=False)
+    optimum_polygons = perform_optimization(field_poly, use_mp=True)
     plot_optimum_polygons(optimum_polygons, field_poly)
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
     distance_matrix, mapping = get_distance_matrix(V, E, R)
@@ -463,7 +465,19 @@ def main():
     logger.debug(f"Length of E: {len(E)}")
     logger.debug(f"Length of R: {len(R)}")
 
-    path = find_path(distance_matrix, mapping, start=V[0], end=V[-1])
+    max_edges = 0
+    max_path = None
+
+    for i in range(len(V) - 1):
+        for j in range(i+1, len(V)):
+            path = find_path(distance_matrix, mapping, start=V[i], end=V[j])
+
+            if len(path) > max_edges:
+                max_path = path
+                max_edges = len(path)
+
+    path = max_path
+    logger.debug(f"Number of edges in the path: {len(path)}")
 
     for point in V:
         plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
