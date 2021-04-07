@@ -13,7 +13,7 @@ from src.a_star import *
 cut_len = 0
 dfs_threshold = 45
 min_dist = 1e-6
-path_width = 40 # 20
+path_width = 30  # 20
 required_edge_cost = -1000
 search_loop_limit = 3e5
 workers_count = 4
@@ -294,9 +294,27 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 
 
 def get_extrapolated_line(p1, p2):
-    EXTRAPOL_RATIO = 1.1
     a = p1
-    b = (p1[0] + EXTRAPOL_RATIO * (p2[0] - p1[0]), p1[1] + EXTRAPOL_RATIO * (p2[1] - p1[1]))
+    diff1 = p2[0] - p1[0]
+    diff2 = p2[1] - p1[1]
+
+    EXTRAPOL_VAL = 5
+    EXTRAPOL_X = 0
+    EXTRAPOL_Y = 0
+
+    if diff1 > 0:
+        EXTRAPOL_X = EXTRAPOL_VAL
+    elif diff1 < 0:
+        EXTRAPOL_X = -EXTRAPOL_VAL
+
+    if diff2 > 0:
+        EXTRAPOL_Y = EXTRAPOL_VAL
+    elif diff2 < 0:
+        EXTRAPOL_Y = -EXTRAPOL_VAL
+
+    b = (p1[0] + (p2[0] - p1[0] + EXTRAPOL_X), p1[1] +
+         (p2[1] - p1[1] + EXTRAPOL_Y))
+
     return shg.LineString([a, b])
 
 
@@ -344,12 +362,13 @@ def polygons_to_graph(optimum_polygons, distance_threshold=1e-4, show=False):
         for i in intersections:
             points.append(i)
 
-        V.add(points[0])
-        V.add(points[1])
-        R.add((points[0], points[1]))
-        R.add((points[1], points[0]))
-        E.add((points[0], points[1]))
-        E.add((points[1], points[0]))
+        if len(points) > 0:
+            V.add(points[0])
+            V.add(points[1])
+            R.add((points[0], points[1]))
+            R.add((points[1], points[0]))
+            E.add((points[0], points[1]))
+            E.add((points[1], points[0]))
 
     for ext_edge in exterior_lines:
         ext_ls = shg.LineString(ext_edge)
@@ -413,8 +432,39 @@ def get_distance_matrix(V, E, R):
     return distance_matrix, mapping
 
 
+def add_arrow(line, direction='right', size=10, color=None):
+    """
+    add an arrow to a line.
+
+    line:       Line2D object
+    position:   x-position of the arrow. If None, mean of xdata is taken
+    direction:  'left' or 'right'
+    size:       size of the arrow in fontsize points
+    color:      if None, line color is taken.
+    """
+    if color is None:
+        color = line.get_color()
+
+    xdata = line.get_xdata()
+    ydata = line.get_ydata()
+
+    # find closest index
+    start_ind = len(xdata) // 2
+    if direction == 'right':
+        end_ind = start_ind + 1
+    else:
+        end_ind = start_ind - 1
+
+    line.axes.annotate('',
+        xytext=(xdata[start_ind], ydata[start_ind]),
+        xy=(xdata[end_ind], ydata[end_ind]),
+        arrowprops=dict(arrowstyle="->", color=color),
+        size=size
+    )
+
+
 def main():
-    region = 5
+    region = 2
 
     if region == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
@@ -423,8 +473,8 @@ def main():
                                                                                              [800, 200]]])).plot()
     elif region == 2:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 400], [600, 400], [600, 0], [1000, 0], [1000, 600],
-                                             [800, 700], [750, 800], [1000, 750], [1000, 1000], [0, 1000], [0, 500],
-                                            [500, 600], [500, 500], [0, 400]])).plot()
+                                             [800, 700], [750, 800], [1000, 750], [1000, 1000], [0, 1000], [0, 550],
+                                            [500, 650], [500, 550], [0, 450]])).plot()
     elif region == 3:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [575, 0], [575, 500], [425, 500], [425, 300], [500, 300], [500, 200],
                                             [300, 200], [300, 650], [700, 650], [700, 0], [1000, 0], [1000, 1000],
@@ -443,7 +493,7 @@ def main():
         field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 500], [200, 500], [200, 600], [500, 600], [500, 0],
                                             [1000, 0], [1000, 450], [700, 450], [700, 550], [1000, 550], [1000, 1000],
                                             [0, 1000]], holes=[[[200, 800], [300, 700], [600, 800], [300, 900]],
-                                                               [[700, 900], [700, 700], [800, 700], [800, 900]]])).plot()
+                                                               [[700, 850], [700, 650], [800, 650], [800, 850]]])).plot()
     elif region == 6:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]])).plot()
     else:
@@ -461,16 +511,12 @@ def main():
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
     distance_matrix, mapping = get_distance_matrix(V, E, R)
 
-    logger.debug(f"Length of V: {len(V)}")
-    logger.debug(f"Length of E: {len(E)}")
-    logger.debug(f"Length of R: {len(R)}")
-
     max_edges = 0
     max_path = None
 
     for i in range(len(V) - 1):
         for j in range(i+1, len(V)):
-            path = find_path(distance_matrix, mapping, start=V[i], end=V[j])
+            path = find_a_star_path(distance_matrix, mapping, start=V[i], end=V[j])
 
             if len(path) > max_edges:
                 max_path = path
@@ -479,20 +525,24 @@ def main():
     path = max_path
     logger.debug(f"Number of edges in the path: {len(path)}")
 
-    for point in V:
-        plt.plot(point[0], point[1], marker='o', color='red', markersize=5)
-
     for edge in E:
-        plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='b')
+        plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='skyblue')
 
     for i in range(len(path) - 1):
         p1 = tuple(map(float, path[i][0][1:-1].split(',')))
         p2 = tuple(map(float, path[i+1][0][1:-1].split(',')))
-        xs = [p1[0], p2[0]]
-        ys = [p1[1], p2[1]]
-        plt.plot(xs, ys, c='cyan', linewidth=3)
+        xs = np.linspace(p1[0], p2[0], 100)
+        ys = np.linspace(p1[1], p2[1], 100)
+        line = plt.plot(xs, ys, c='orange', linewidth=2)[0]
+        add_arrow(line, color='green')
+
+        if i == 0:
+            plt.plot(p1[0], p1[1], marker='o', color='red', markersize=5)
+        if i == len(path) - 2:
+            plt.plot(p2[0], p2[1], marker='o', color='blue', markersize=5)
 
     plt.gca().set_aspect('equal', 'box')
+    plt.grid(axis='both')
     plt.show()
 
 

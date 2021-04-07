@@ -2,3 +2,4 @@ venv
 deliverables
 .idea
 src/__pycache__/
+.pdf
