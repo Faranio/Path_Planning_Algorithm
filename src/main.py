@@ -12,6 +12,7 @@ from src.a_star import *
 
 cut_len = 0
 dfs_threshold = 45
+extrapolation_offset = 5
 min_dist = 1e-6
 path_width = 30  # 20
 required_edge_cost = -1000
@@ -294,39 +295,29 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 
 
 def get_extrapolated_line(p1, p2):
-    a = p1
-    diff1 = p2[0] - p1[0]
-    diff2 = p2[1] - p1[1]
-
-    EXTRAPOL_VAL = 5
-    EXTRAPOL_X = 0
-    EXTRAPOL_Y = 0
-
-    if diff1 > 0:
-        EXTRAPOL_X = EXTRAPOL_VAL
-    elif diff1 < 0:
-        EXTRAPOL_X = -EXTRAPOL_VAL
-
-    if diff2 > 0:
-        EXTRAPOL_Y = EXTRAPOL_VAL
-    elif diff2 < 0:
-        EXTRAPOL_Y = -EXTRAPOL_VAL
-
-    b = (p1[0] + (p2[0] - p1[0] + EXTRAPOL_X), p1[1] +
-         (p2[1] - p1[1] + EXTRAPOL_Y))
+    m = (p2[1] - p1[1]) / (p2[0] - p1[0])
+    c = p2[1] - m * p2[0]
+    sign = 1 if p1[0] - p2[0] > 0 else -1
+    a = (p1[0] + sign * extrapolation_offset, m * (p1[0] + sign * extrapolation_offset) + c)
+    b = (p2[0] + (-1) * sign * extrapolation_offset, m * (p2[0] + (-1) * sign * extrapolation_offset) + c)
 
     return shg.LineString([a, b])
 
 
 def get_intersections(ls, E):
     intersection_points = set()
+    unique_points = set()
 
     for ext_line in E:
         ext_ls = shg.LineString(ext_line)
         temp = ls.intersection(ext_ls)
 
         if not temp.is_empty:
-            intersection_points.add(temp.coords[0])
+            res = (round(temp.coords[0][0]), round(temp.coords[0][1]))
+
+            if res not in unique_points:
+                intersection_points.add(temp.coords[0])
+                unique_points.add(res)
 
     return intersection_points
 
@@ -354,8 +345,6 @@ def polygons_to_graph(optimum_polygons, distance_threshold=1e-4, show=False):
         p1 = ls.coords[0]
         p2 = ls.coords[1]
         ls = get_extrapolated_line(p1, p2)
-        p1, p2 = ls.coords
-        ls = get_extrapolated_line(p2, p1)
         intersections = get_intersections(ls, exterior_lines)
         points = []
 
@@ -464,7 +453,7 @@ def add_arrow(line, direction='right', size=10, color=None):
 
 
 def main():
-    region = 2
+    region = 1
 
     if region == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
@@ -511,18 +500,19 @@ def main():
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
     distance_matrix, mapping = get_distance_matrix(V, E, R)
 
-    max_edges = 0
-    max_path = None
+    min_cost = 1e6
+    min_path = None
 
     for i in range(len(V) - 1):
         for j in range(i+1, len(V)):
             path = find_a_star_path(distance_matrix, mapping, start=V[i], end=V[j])
+            cost = float(path[-1][1])
 
-            if len(path) > max_edges:
-                max_path = path
-                max_edges = len(path)
+            if cost < min_cost:
+                min_cost = cost
+                min_path = path
 
-    path = max_path
+    path = min_path
     logger.debug(f"Number of edges in the path: {len(path)}")
 
     for edge in E:
