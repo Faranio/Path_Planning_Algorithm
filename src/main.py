@@ -295,11 +295,18 @@ def plot_directions(field_poly, permutation, optimum_polygons):
 
 
 def get_extrapolated_line(p1, p2):
-    m = (p2[1] - p1[1]) / (p2[0] - p1[0])
-    c = p2[1] - m * p2[0]
-    sign = 1 if p1[0] - p2[0] > 0 else -1
-    a = (p1[0] + sign * extrapolation_offset, m * (p1[0] + sign * extrapolation_offset) + c)
-    b = (p2[0] + (-1) * sign * extrapolation_offset, m * (p2[0] + (-1) * sign * extrapolation_offset) + c)
+    divisor = p2[0] - p1[0]
+
+    if divisor != 0:
+        m = (p2[1] - p1[1]) / (p2[0] - p1[0])
+        c = p2[1] - m * p2[0]
+        sign = 1 if p1[0] - p2[0] > 0 else -1
+        a = (p1[0] + sign * extrapolation_offset, m * (p1[0] + sign * extrapolation_offset) + c)
+        b = (p2[0] + (-1) * sign * extrapolation_offset, m * (p2[0] + (-1) * sign * extrapolation_offset) + c)
+    else:
+        sign = 1 if p1[1] - p2[1] > 0 else -1
+        a = (p1[0], p1[1] + sign * extrapolation_offset)
+        b = (p2[0], p2[1] + (-1) * sign * extrapolation_offset)
 
     return shg.LineString([a, b])
 
