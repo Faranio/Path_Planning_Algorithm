@@ -460,7 +460,7 @@ def add_arrow(line, direction='right', size=10, color=None):
 
 
 def main():
-    region = 1
+    region = 3
 
     if region == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
@@ -534,9 +534,9 @@ def main():
         add_arrow(line, color='green')
 
         if i == 0:
-            plt.plot(p1[0], p1[1], marker='o', color='red', markersize=5)
+            plt.plot(p1[0], p1[1], marker='o', color='blue', markersize=5)
         if i == len(path) - 2:
-            plt.plot(p2[0], p2[1], marker='o', color='blue', markersize=5)
+            plt.plot(p2[0], p2[1], marker='o', color='red', markersize=5)
 
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
