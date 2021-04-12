@@ -1,4 +1,5 @@
 import collections
+import elkai
 import itertools
 import matplotlib.pyplot as plt
 import more_itertools as mi
@@ -11,10 +12,11 @@ from lgblkb_tools.geometry import FieldPoly
 from src.a_star import *
 
 cut_len = 0
+default_edge_cost = 1e7
 dfs_threshold = 45
 extrapolation_offset = 5
 min_dist = 1e-6
-path_width = 30  # 20
+path_width = 20  # 20
 required_edge_cost = -1000
 search_loop_limit = 3e5
 workers_count = 4
@@ -138,6 +140,7 @@ def decompose_from_point(field_poly, some_point, show=False):
         best.field.plot(text=f'Accuracy = {best.acr}')
         start.plot('Start')
         goal.plot('Goal')
+        plt.tight_layout()
         plt.show()
 
     decomposed_polygons = [best.field]
@@ -238,6 +241,8 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
     logger.info(f"Total Field Count: {total_field_count}")
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
+    plt.title("Optimum Polygons")
+    plt.tight_layout()
     plt.show()
 
 
@@ -265,33 +270,6 @@ def get_lines(field_poly):
             all_lines.append(ls)
 
     return all_lines
-
-
-def plot_directions(field_poly, permutation, optimum_polygons):
-    field_poly.plot(lw=1)
-    all_lines = get_lines(optimum_polygons)
-    num_of_lines = len(all_lines)
-
-    for i in range(len(permutation) - 1):
-        idx_from, idx_to = permutation[i], permutation[i + 1]
-
-        if idx_from < num_of_lines:
-            x1, y1 = list(all_lines[idx_from].coords)[0]
-        else:
-            x1, y1 = list(all_lines[idx_from - num_of_lines].coords)[-1]
-
-        if idx_to < num_of_lines:
-            x2, y2 = list(all_lines[idx_to].coords)[0]
-        else:
-            x2, y2 = list(all_lines[idx_to - num_of_lines].coords)[-1]
-
-        if i == 0:
-            plt.plot((x1, x2), (y1, y2), lw=3, c='g')
-        else:
-            plt.plot((x1, x2), (y1, y2), lw=1, c='r')
-
-    plt.gca().set_aspect('equal', 'box')
-    plt.show()
 
 
 def get_extrapolated_line(p1, p2):
@@ -397,6 +375,8 @@ def polygons_to_graph(optimum_polygons, distance_threshold=1e-4, show=False):
 
         plt.gca().set_aspect('equal', 'box')
         plt.grid(axis='both')
+        plt.title("Graph Representation")
+        plt.tight_layout()
         plt.show()
 
     V, E, R = list(V), list(E), list(R)
@@ -409,7 +389,7 @@ def get_distance_matrix(V, E, R):
     num_nodes = len(V)
     mapping = {}
     reverse_mapping = {}
-    distance_matrix = np.ones([num_nodes, num_nodes]) * np.inf
+    distance_matrix = np.ones([num_nodes, num_nodes]) * default_edge_cost
 
     for i in range(len(V)):
         mapping[i] = V[i]
@@ -429,23 +409,14 @@ def get_distance_matrix(V, E, R):
 
 
 def add_arrow(line, direction='right', size=10, color=None):
-    """
-    add an arrow to a line.
-
-    line:       Line2D object
-    position:   x-position of the arrow. If None, mean of xdata is taken
-    direction:  'left' or 'right'
-    size:       size of the arrow in fontsize points
-    color:      if None, line color is taken.
-    """
     if color is None:
         color = line.get_color()
 
     xdata = line.get_xdata()
     ydata = line.get_ydata()
 
-    # find closest index
     start_ind = len(xdata) // 2
+
     if direction == 'right':
         end_ind = start_ind + 1
     else:
@@ -460,7 +431,7 @@ def add_arrow(line, direction='right', size=10, color=None):
 
 
 def main():
-    region = 3
+    region = 0
 
     if region == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
@@ -500,12 +471,40 @@ def main():
     field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
+    plt.title("Original Polygon")
+    plt.tight_layout()
     plt.show()
 
     optimum_polygons = perform_optimization(field_poly, use_mp=True)
     plot_optimum_polygons(optimum_polygons, field_poly)
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
     distance_matrix, mapping = get_distance_matrix(V, E, R)
+
+    path = elkai.solve_float_matrix(distance_matrix)
+
+    field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
+
+    for edge in E:
+        plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='skyblue')
+
+    for i in range(len(path) - 1):
+        p1 = mapping[path[i]]
+        p2 = mapping[path[i+1]]
+        xs = np.linspace(p1[0], p2[0], 100)
+        ys = np.linspace(p1[1], p2[1], 100)
+        line = plt.plot(xs, ys, c='orange', linewidth=2)[0]
+        add_arrow(line, color='green')
+
+        if i == 0:
+            plt.plot(p1[0], p1[1], marker='o', color='blue', markersize=5)
+        if i == len(path) - 2:
+            plt.plot(p2[0], p2[1], marker='o', color='red', markersize=5)
+
+    plt.gca().set_aspect('equal', 'box')
+    plt.grid(axis='both')
+    plt.title("LKH Solver")
+    plt.tight_layout()
+    plt.show()
 
     min_cost = 1e6
     min_path = None
@@ -540,6 +539,8 @@ def main():
 
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
+    plt.title("A* Search")
+    plt.tight_layout()
     plt.show()
 
 

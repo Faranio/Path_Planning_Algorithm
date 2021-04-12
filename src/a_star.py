@@ -1,5 +1,7 @@
 import numpy as np
 
+from src.main import default_edge_cost
+
 
 class Graph:
     def __init__(self, graph_dict=None):
@@ -97,7 +99,7 @@ def find_a_star_path(distance_matrix, mapping, start, end):
     graph = Graph()
     heuristics = {}
 
-    i, j = np.where(distance_matrix != np.inf)
+    i, j = np.where(distance_matrix < default_edge_cost)
 
     for row, col in zip(i, j):
         p1 = mapping[row]
