@@ -12,12 +12,12 @@ from lgblkb_tools.geometry import FieldPoly
 from src.a_star import *
 
 cut_len = 0
-default_edge_cost = 1e7
+default_edge_cost = 1e9
 dfs_threshold = 45
 extrapolation_offset = 5
 min_dist = 1e-6
 path_width = 20  # 20
-required_edge_cost = -1000
+required_edge_cost = -1e5
 search_loop_limit = 3e5
 workers_count = 4
 
@@ -430,66 +430,70 @@ def add_arrow(line, direction='right', size=10, color=None):
     )
 
 
-def main():
-    region = 0
-
-    if region == 1:
+def choose_region(idx, show=True):
+    if idx == 1:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[200, 200],
-                                                                                             [200, 800],
-                                                                                             [800, 800],
-                                                                                             [800, 200]]])).plot()
-    elif region == 2:
+                                                                                                 [200, 800],
+                                                                                                 [800, 800],
+                                                                                                 [800, 200]]])).plot()
+    elif idx == 2:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 400], [600, 400], [600, 0], [1000, 0], [1000, 600],
-                                             [800, 700], [750, 800], [1000, 750], [1000, 1000], [0, 1000], [0, 550],
+                                            [800, 700], [750, 800], [1000, 750], [1000, 1000], [0, 1000], [0, 550],
                                             [500, 650], [500, 550], [0, 450]])).plot()
-    elif region == 3:
-        field_poly = FieldPoly(shg.Polygon([[0, 0], [575, 0], [575, 500], [425, 500], [425, 300], [500, 300], [500, 200],
-                                            [300, 200], [300, 650], [700, 650], [700, 0], [1000, 0], [1000, 1000],
-                                            [0, 1000]], holes=[[[350, 850], [400, 750], [600, 850], [450, 925]]])).plot()
-    elif region == 4:
+    elif idx == 3:
+        field_poly = FieldPoly(
+            shg.Polygon([[0, 0], [575, 0], [575, 500], [425, 500], [425, 300], [500, 300], [500, 200],
+                         [300, 200], [300, 650], [700, 650], [700, 0], [1000, 0], [1000, 1000],
+                         [0, 1000]], holes=[[[350, 850], [400, 750], [600, 850], [450, 925]]])).plot()
+    elif idx == 4:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]], holes=[[[100, 400], [200, 300],
                                                                                                  [300, 300], [350, 450],
-                                                                                                 [300, 500], [150, 450]],
+                                                                                                 [300, 500],
+                                                                                                 [150, 450]],
                                                                                                 [[750, 300], [750, 100],
-                                                                                                 [850, 100], [850, 300]],
-                                                                                                 [[400, 700], [850, 500],
-                                                                                                  [950, 600], [900, 650],
-                                                                                                  [850, 600], [600, 700],
-                                                                                                  [700, 800], [600, 900]]])).plot()
-    elif region == 5:
+                                                                                                 [850, 100],
+                                                                                                 [850, 300]],
+                                                                                                [[400, 700], [850, 500],
+                                                                                                 [950, 600], [900, 650],
+                                                                                                 [850, 600], [600, 700],
+                                                                                                 [700, 800],
+                                                                                                 [600, 900]]])).plot()
+    elif idx == 5:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 500], [200, 500], [200, 600], [500, 600], [500, 0],
                                             [1000, 0], [1000, 450], [700, 450], [700, 550], [1000, 550], [1000, 1000],
                                             [0, 1000]], holes=[[[200, 800], [300, 700], [600, 800], [300, 900]],
-                                                               [[700, 850], [700, 650], [800, 650], [800, 850]]])).plot()
-    elif region == 6:
+                                                               [[700, 850], [700, 650], [800, 650],
+                                                                [800, 850]]])).plot()
+    elif idx == 6:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]])).plot()
     else:
         field_poly = FieldPoly.synthesize(cities_count=4, hole_count=1, hole_cities_count=4, poly_extent=1000)
 
-    initial_lines_count = get_field_lines_count(field_poly, show=True)
+    if show:
+        initial_lines_count = get_field_lines_count(field_poly, show=True)
 
-    field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
-    plt.gca().set_aspect('equal', 'box')
-    plt.grid(axis='both')
-    plt.title("Original Polygon")
-    plt.tight_layout()
-    plt.show()
+        field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
+        plt.gca().set_aspect('equal', 'box')
+        plt.grid(axis='both')
+        plt.title("Original Polygon")
+        plt.tight_layout()
+        plt.show()
 
-    optimum_polygons = perform_optimization(field_poly, use_mp=True)
-    plot_optimum_polygons(optimum_polygons, field_poly)
-    V, E, R = polygons_to_graph(optimum_polygons, show=True)
-    distance_matrix, mapping = get_distance_matrix(V, E, R)
+    return field_poly
 
+
+def best_LKH_path(E, R, distance_matrix, mapping):
     path = elkai.solve_float_matrix(distance_matrix)
-
-    field_poly.plot(f"Cost: {initial_lines_count}", lw=1)
+    unique_edges = set()
+    covered_required = 0
+    cost = 0
 
     for edge in E:
         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='skyblue')
 
     for i in range(len(path) - 1):
         p1 = mapping[path[i]]
-        p2 = mapping[path[i+1]]
+        p2 = mapping[path[i + 1]]
         xs = np.linspace(p1[0], p2[0], 100)
         ys = np.linspace(p1[1], p2[1], 100)
         line = plt.plot(xs, ys, c='orange', linewidth=2)[0]
@@ -500,17 +504,28 @@ def main():
         if i == len(path) - 2:
             plt.plot(p2[0], p2[1], marker='o', color='red', markersize=5)
 
+        if (p1, p2) in R and (p1, p2) not in unique_edges:
+            unique_edges.add((p1, p2))
+            covered_required += 1
+
+        cost += distance_matrix[path[i], path[i+1]]
+
+    logger.info(f"\n-------------LKH Solver Results-------------")
+    logger.info(f"Covered required edges: {covered_required} out of {len(R) // 2}")
+    logger.info(f"Path cost: {cost}")
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
     plt.title("LKH Solver")
     plt.tight_layout()
     plt.show()
 
-    min_cost = 1e6
+
+def best_a_star_path(V, E, R, distance_matrix, mapping):
+    min_cost = default_edge_cost
     min_path = None
 
     for i in range(len(V) - 1):
-        for j in range(i+1, len(V)):
+        for j in range(i + 1, len(V)):
             path = find_a_star_path(distance_matrix, mapping, start=V[i], end=V[j])
             cost = float(path[-1][1])
 
@@ -524,9 +539,12 @@ def main():
     for edge in E:
         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='skyblue')
 
+    unique_edges = set()
+    covered_required = 0
+
     for i in range(len(path) - 1):
         p1 = tuple(map(float, path[i][0][1:-1].split(',')))
-        p2 = tuple(map(float, path[i+1][0][1:-1].split(',')))
+        p2 = tuple(map(float, path[i + 1][0][1:-1].split(',')))
         xs = np.linspace(p1[0], p2[0], 100)
         ys = np.linspace(p1[1], p2[1], 100)
         line = plt.plot(xs, ys, c='orange', linewidth=2)[0]
@@ -537,11 +555,32 @@ def main():
         if i == len(path) - 2:
             plt.plot(p2[0], p2[1], marker='o', color='red', markersize=5)
 
+        if (p1, p2) in R and (p1, p2) not in unique_edges:
+            unique_edges.add((p1, p2))
+            covered_required += 1
+
+    logger.info(f"\n-------------A* Search Results-------------")
+    logger.info(f"Covered required edges: {covered_required} out of {len(R) // 2}")
+    logger.info(f"Path cost: {min_cost}")
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
     plt.title("A* Search")
     plt.tight_layout()
     plt.show()
+
+
+def main():
+    field_poly = choose_region(idx=0, show=True)
+    optimum_polygons = perform_optimization(field_poly, use_mp=True)
+    plot_optimum_polygons(optimum_polygons, field_poly)
+    V, E, R = polygons_to_graph(optimum_polygons, show=True)
+    distance_matrix, mapping = get_distance_matrix(V, E, R)
+
+    # Finding a path using LKH TSP Solver
+    best_LKH_path(E, R, distance_matrix, mapping)
+
+    # Finding a path using A* Search
+    best_a_star_path(V, E, R, distance_matrix, mapping)
 
 
 if __name__ == "__main__":
