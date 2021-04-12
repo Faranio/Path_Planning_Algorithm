@@ -12,6 +12,7 @@ cryptography==3.4.6
 cycler==0.10.0
 decorator==4.4.2
 dynaconf==3.0.0
+elkai==0.1.2
 Fiona==1.8.18
 GeoAlchemy2==0.6.3
 geojson==2.5.0

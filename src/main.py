@@ -12,8 +12,9 @@ from lgblkb_tools.geometry import FieldPoly
 from src.a_star import *
 
 cut_len = 0
-default_edge_cost = 1e9
+default_edge_cost = 1e6
 dfs_threshold = 45
+existing_edge_cost = 0.1
 extrapolation_offset = 5
 min_dist = 1e-6
 path_width = 20  # 20
@@ -389,20 +390,24 @@ def get_distance_matrix(V, E, R):
     num_nodes = len(V)
     mapping = {}
     reverse_mapping = {}
-    distance_matrix = np.ones([num_nodes, num_nodes]) * default_edge_cost
+    distance_matrix = np.ones([num_nodes, num_nodes])
 
     for i in range(len(V)):
         mapping[i] = V[i]
         reverse_mapping[V[i]] = i
 
-    for edge in E:
-        node_from = reverse_mapping[edge[0]]
-        node_to = reverse_mapping[edge[1]]
+    for i in range(len(distance_matrix)):
+        for j in range(len(distance_matrix)):
+            if i != j:
+                p1 = mapping[i]
+                p2 = mapping[j]
 
-        if edge in R:
-            distance_matrix[node_from][node_to] = required_edge_cost
-        else:
-            distance_matrix[node_from][node_to] = np.linalg.norm(np.asarray(edge[1]) - np.asarray(edge[0]))
+                if (p1, p2) in R:
+                    distance_matrix[i][j] = required_edge_cost
+                elif (p1, p2) in E:
+                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * existing_edge_cost
+                else:
+                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * default_edge_cost
 
     logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
     return distance_matrix, mapping
@@ -534,7 +539,6 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
                 min_path = path
 
     path = min_path
-    logger.debug(f"Number of edges in the path: {len(path)}")
 
     for edge in E:
         plt.plot([edge[0][0], edge[1][0]], [edge[0][1], edge[1][1]], c='skyblue')
@@ -570,7 +574,7 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
 
 
 def main():
-    field_poly = choose_region(idx=0, show=True)
+    field_poly = choose_region(idx=1, show=True)
     optimum_polygons = perform_optimization(field_poly, use_mp=True)
     plot_optimum_polygons(optimum_polygons, field_poly)
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
