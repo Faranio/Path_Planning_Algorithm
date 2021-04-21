@@ -18,7 +18,7 @@ cut_len = 0
 default_edge_cost = 1e6
 dfs_threshold = 45
 existing_edge_cost = 1
-extrapolation_offset = 5
+extrapolation_offset = 2
 min_dist = 1e-6
 path_width = 40  # 20
 required_edge_cost = -1e5
@@ -230,7 +230,7 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
         optimum_polygon.plot(lw=5)
         temp_x, temp_y = optimum_polygon.polygon.centroid.xy
         temp_x, temp_y = float(temp_x[0]), float(temp_y[0])
-        plt.text(temp_x, temp_y, f"Cost: {lines_count}", ha='center', va='center', fontsize=30)
+        plt.text(temp_x, temp_y, f"Cost: {lines_count}", ha='center', va='center', fontsize=40)
         costs.append(optimum_polygon.get_min_cost(path_width).cost)
         field_lines = get_field_lines(optimum_polygon)
 
@@ -485,7 +485,7 @@ def choose_region(idx, show=True):
     elif idx == 6:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]]))
     else:
-        field_poly = FieldPoly.synthesize(cities_count=4, hole_count=1, hole_cities_count=4, poly_extent=1000)
+        field_poly = FieldPoly.synthesize(cities_count=5, hole_count=1, hole_cities_count=5, poly_extent=1000)
 
     if show:
         plt.figure(figsize=(20, 20))
@@ -500,8 +500,7 @@ def choose_region(idx, show=True):
         field_poly.plot(lw=5)
         temp_x, temp_y = field_poly.polygon.centroid.xy
         temp_x, temp_y = float(temp_x[0]), float(temp_y[0])
-        plt.text(temp_x, temp_y, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=30)
-        # plt.text(500, 500, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=30)
+        plt.text(temp_x, temp_y, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=40)
         plt.gca().set_aspect('equal', 'box')
         plt.grid(axis='both')
         plt.title("Original Polygon", fontsize=50)
@@ -599,18 +598,33 @@ def best_LKH_path(E, R, distance_matrix, mapping):
 
 def best_a_star_path(V, E, R, distance_matrix, mapping):
     min_cost = default_edge_cost
+    max_covered = -1
     min_path = None
 
     plt.figure(figsize=(20, 20))
 
     for i in range(len(V) - 1):
         for j in range(i + 1, len(V)):
+            unique_edges = set()
+            covered_required = 0
             path = find_a_star_path(distance_matrix, mapping, start=V[i], end=V[j])
-            cost = float(path[-1][1])
 
-            if cost < min_cost:
-                min_cost = cost
+            for k in range(len(path) - 1):
+                p1 = tuple(map(float, path[k][0][1:-1].split(',')))
+                p2 = tuple(map(float, path[k + 1][0][1:-1].split(',')))
+
+                if (p1, p2) in R and (p1, p2) not in unique_edges:
+                    unique_edges.add((p1, p2))
+                    covered_required += 1
+
+            if covered_required >= max_covered:
+                max_covered = covered_required
                 min_path = path
+                # cost = float(path[-1][1])
+                #
+                # if cost < min_cost:
+                #     min_cost = cost
+                #     min_path = path
 
     path = min_path
 
@@ -640,7 +654,7 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
     logger.info(f"\n-------------A* Search Results-------------")
     logger.info(f"Covered required edges: {covered_required} out of {len(R) // 2}")
     logger.info(f"Path cost: {min_cost}")
-    plt.text(500, 500, f"Cost: {covered_required}", ha='center', va='center', fontsize=30)
+    plt.text(500, 500, f"Cost: {covered_required}", ha='center', va='center', fontsize=40)
     plt.gca().set_aspect('equal', 'box')
     plt.grid(axis='both')
     plt.title("A* Search", fontsize=50)
@@ -651,8 +665,8 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
 
 
 def main():
-    field_poly = choose_region(idx=3, show=True)
-    optimum_polygons = perform_optimization(field_poly, use_mp=True)
+    field_poly = choose_region(idx=2, show=True)
+    optimum_polygons = perform_optimization(field_poly, use_mp=False)
     plot_optimum_polygons(optimum_polygons, field_poly)
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
     distance_matrix, mapping = get_distance_matrix(V, E, R)
