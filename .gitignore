@@ -1,5 +1,7 @@
 venv
 deliverables
-.idea
+*.idea
 src/__pycache__/
-.pdf
+*.pdf
+*.png
+*.jpg
