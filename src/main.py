@@ -498,7 +498,10 @@ def choose_region(idx, show=True):
             plt.plot(p1, p2, lw=5)
 
         field_poly.plot(lw=5)
-        plt.text(500, 500, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=30)
+        temp_x, temp_y = field_poly.polygon.centroid.xy
+        temp_x, temp_y = float(temp_x[0]), float(temp_y[0])
+        plt.text(temp_x, temp_y, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=30)
+        # plt.text(500, 500, f"Cost: {initial_lines_count}", ha='center', va='center', fontsize=30)
         plt.gca().set_aspect('equal', 'box')
         plt.grid(axis='both')
         plt.title("Original Polygon", fontsize=50)
