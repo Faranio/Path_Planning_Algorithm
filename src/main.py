@@ -1,5 +1,4 @@
 import collections
-import elkai
 import itertools
 import matplotlib.pyplot as plt
 import more_itertools as mi
@@ -8,40 +7,34 @@ import shapely.geometry as shg
 from lgblkb_tools import logger
 from lgblkb_tools.common.utils import ParallelTasker
 from lgblkb_tools.geometry import FieldPoly
-
-from python_tsp.heuristics import solve_tsp_simulated_annealing
 from tsp_solver.greedy import solve_tsp
 
 from src.a_star import *
 
-cut_len = 0
-default_edge_cost = 1e6
-dfs_threshold = 45
-existing_edge_cost = 1
-extrapolation_offset = 2
-min_dist = 1e-6
-path_width = 40  # 20
-required_edge_cost = -1e5
-search_loop_limit = 3e5
-workers_count = 4
+config = {
+    'DEFAULT_EDGE_COST': 1e6,
+    'DFS_THRESHOLD': 45,
+    'EXISTING_EDGE_COST': 1,
+    'EXTRAPOLATION_OFFSET': 2,
+    'MINIMUM_DISTANCE': 1e-6,
+    'PATH_WIDTH': 40,
+    'REQUIRED_EDGE_COST': -1e5,
+    'SEARCH_LOOP_LIMIT': 3e5,
+    'WORKERS_COUNT': 4
+}
 
 
-def get_field_lines(field_poly: FieldPoly):
+def get_field_lines(field_poly: FieldPoly, show=False):
     field_poly = FieldPoly.as_valid(field_poly)
-    field_lines = field_poly.get_field_lines_old(path_width, field_poly.get_min_cost(path_width).base_line, show=False)
+    field_lines = field_poly.get_field_lines_old(config['PATH_WIDTH'],
+                                                 field_poly.get_min_cost(config['PATH_WIDTH']).base_line, show=show)
     return field_lines
-
-
-def get_field_lines_count(field_poly: FieldPoly, show=False):
-    field_poly = FieldPoly.as_valid(field_poly)
-    field_lines = field_poly.get_field_lines_old(path_width, field_poly.get_min_cost(path_width).base_line, show=show)
-    return len(field_lines)
 
 
 def get_paths(poly: FieldPoly, start, goal, loop_limit=5e6):
     graph = poly.adjacency_info
 
-    if len(poly.G.decision_points['all']) < dfs_threshold:
+    if len(poly.G.decision_points['all']) < config['DFS_THRESHOLD']:
         pop_index = -1
         loop_limit = 5e6
     else:
@@ -74,7 +67,7 @@ def get_paths(poly: FieldPoly, start, goal, loop_limit=5e6):
                 seen.add(path_hash)
                 some_field = FieldPoly(some_path)
 
-                if some_field.geometry.area < min_dist:
+                if some_field.geometry.area < config['MINIMUM_DISTANCE']:
                     continue
 
                 if not some_field.geometry.is_valid:
@@ -124,7 +117,7 @@ def get_other_polys(parent_poly, child_poly):
         logger.error(f"diff_result: \n{diff_result}")
         raise NotImplementedError(str(type(diff_result)))
 
-    polygons = [FieldPoly.as_valid(x) for x in polygons if x.area > min_dist]
+    polygons = [FieldPoly.as_valid(x) for x in polygons if x.area > config['MINIMUM_DISTANCE']]
     return polygons
 
 
@@ -149,10 +142,10 @@ def decompose_from_point(field_poly, some_point, show=False):
 
     decomposed_polygons = [best.field]
 
-    for path_field in get_paths(field_poly, start, goal, loop_limit=search_loop_limit):
+    for path_field in get_paths(field_poly, start, goal, loop_limit=config['SEARCH_LOOP_LIMIT']):
         curr_count = next(counter)
         polygons = get_other_polys(field_poly, path_field)
-        costs = [p.get_min_cost(path_width).cost for p in [path_field] + polygons]
+        costs = [p.get_min_cost(config['PATH_WIDTH']).cost for p in [path_field] + polygons]
         area_cost_ratio = field_poly.geometry.area / sum(costs)
 
         if area_cost_ratio > best.acr:
@@ -177,7 +170,7 @@ def decompose_from_points(field_poly: FieldPoly, points=None, use_mp=False, show
 
     if use_mp:
         chunks_of_polygons = ParallelTasker(decompose_from_point, field_poly, show=show)\
-            .set_run_params(some_point=points).run(workers_count=workers_count)
+            .set_run_params(some_point=points).run(workers_count=config['WORKERS_COUNT'])
 
         for res_polygons in chunks_of_polygons:
             decomp_cost = res_polygons[0].area_cost_ratio
@@ -225,20 +218,17 @@ def plot_optimum_polygons(optimum_polygons, field_poly):
     all_lines = []
 
     for optimum_polygon in optimum_polygons:
-        lines_count = get_field_lines_count(optimum_polygon, show=False)
+        lines_count = len(get_field_lines(optimum_polygon, show=False))
         total_field_count += lines_count
         optimum_polygon.plot(lw=5)
         temp_x, temp_y = optimum_polygon.polygon.centroid.xy
         temp_x, temp_y = float(temp_x[0]), float(temp_y[0])
         plt.text(temp_x, temp_y, f"Cost: {lines_count}", ha='center', va='center', fontsize=40)
-        costs.append(optimum_polygon.get_min_cost(path_width).cost)
+        costs.append(optimum_polygon.get_min_cost(config['PATH_WIDTH']).cost)
         field_lines = get_field_lines(optimum_polygon)
 
         for line in field_lines:
             ls = shg.LineString(line.line)
-            p1 = ls.interpolate(cut_len).coords[0]
-            p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
-            ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
             all_lines.append(ls)
             ls_x, ls_y = ls.xy
             plt.plot(ls_x, ls_y, c='r', lw=5)
@@ -265,18 +255,12 @@ def get_lines(field_poly):
 
             for line in field_lines:
                 ls = shg.LineString(line.line)
-                p1 = ls.interpolate(cut_len).coords[0]
-                p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
-                ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
                 all_lines.append(ls)
     else:
         field_lines = get_field_lines(field_poly)
 
         for line in field_lines:
             ls = shg.LineString(line.line)
-            p1 = ls.interpolate(cut_len).coords[0]
-            p2 = ls.interpolate(int(line.line.length - cut_len)).coords[0]
-            ls = shg.LineString([shg.Point(p1), shg.Point(p2)])
             all_lines.append(ls)
 
     return all_lines
@@ -289,12 +273,12 @@ def get_extrapolated_line(p1, p2):
         m = (p2[1] - p1[1]) / (p2[0] - p1[0])
         c = p2[1] - m * p2[0]
         sign = 1 if p1[0] - p2[0] > 0 else -1
-        a = (p1[0] + sign * extrapolation_offset, m * (p1[0] + sign * extrapolation_offset) + c)
-        b = (p2[0] + (-1) * sign * extrapolation_offset, m * (p2[0] + (-1) * sign * extrapolation_offset) + c)
+        a = (p1[0] + sign * config['EXTRAPOLATION_OFFSET'], m * (p1[0] + sign * config['EXTRAPOLATION_OFFSET']) + c)
+        b = (p2[0] + (-1) * sign * config['EXTRAPOLATION_OFFSET'], m * (p2[0] + (-1) * sign * config['EXTRAPOLATION_OFFSET']) + c)
     else:
         sign = 1 if p1[1] - p2[1] > 0 else -1
-        a = (p1[0], p1[1] + sign * extrapolation_offset)
-        b = (p2[0], p2[1] + (-1) * sign * extrapolation_offset)
+        a = (p1[0], p1[1] + sign * config['EXTRAPOLATION_OFFSET'])
+        b = (p2[0], p2[1] + (-1) * sign * config['EXTRAPOLATION_OFFSET'])
 
     return shg.LineString([a, b])
 
@@ -416,11 +400,11 @@ def get_distance_matrix(V, E, R):
                 p2 = mapping[j]
 
                 if (p1, p2) in R:
-                    distance_matrix[i][j] = required_edge_cost
+                    distance_matrix[i][j] = config['REQUIRED_EDGE_COST']
                 elif (p1, p2) in E:
-                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * existing_edge_cost
+                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * config['EXISTING_EDGE_COST']
                 else:
-                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * default_edge_cost
+                    distance_matrix[i][j] = np.linalg.norm(np.asarray(p2) - np.asarray(p1)) * config['DEFAULT_EDGE_COST']
 
     logger.debug(f"Distance Matrix Shape: {distance_matrix.shape}")
     return distance_matrix, mapping
@@ -480,8 +464,8 @@ def choose_region(idx, show=True):
         field_poly = FieldPoly(shg.Polygon([[0, 0], [400, 0], [400, 500], [200, 500], [200, 600], [500, 600], [500, 0],
                                             [1000, 0], [1000, 450], [700, 450], [700, 550], [1000, 550], [1000, 1000],
                                             [0, 1000]], holes=[[[200, 800], [300, 700], [600, 800], [300, 900]],
-                                                               [[700, 850], [700, 650], [800, 650],
-                                                                [800, 850]]]))
+                                                               [[700, 900], [700, 700], [800, 700],
+                                                                [800, 900]]]))
     elif idx == 6:
         field_poly = FieldPoly(shg.Polygon([[0, 0], [1000, 0], [1000, 1000], [0, 1000]]))
     else:
@@ -489,7 +473,7 @@ def choose_region(idx, show=True):
 
     if show:
         plt.figure(figsize=(20, 20))
-        initial_lines_count = get_field_lines_count(field_poly, show=False)
+        initial_lines_count = len(get_field_lines(field_poly, show=False))
         lines = get_field_lines(field_poly)
 
         for line in lines:
@@ -597,7 +581,7 @@ def best_LKH_path(E, R, distance_matrix, mapping):
 
 
 def best_a_star_path(V, E, R, distance_matrix, mapping):
-    min_cost = default_edge_cost
+    min_cost = config['DEFAULT_EDGE_COST']
     max_covered = -1
     min_path = None
 
@@ -609,22 +593,23 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
             covered_required = 0
             path = find_a_star_path(distance_matrix, mapping, start=V[i], end=V[j])
 
-            for k in range(len(path) - 1):
-                p1 = tuple(map(float, path[k][0][1:-1].split(',')))
-                p2 = tuple(map(float, path[k + 1][0][1:-1].split(',')))
+            # for k in range(len(path) - 1):
+            #     p1 = tuple(map(float, path[k][0][1:-1].split(',')))
+            #     p2 = tuple(map(float, path[k + 1][0][1:-1].split(',')))
+            #
+            #     if (p1, p2) in R and (p1, p2) not in unique_edges:
+            #         unique_edges.add((p1, p2))
+            #         covered_required += 1
+            #
+            # if covered_required >= max_covered:
+            #     max_covered = covered_required
+            #     min_path = path
 
-                if (p1, p2) in R and (p1, p2) not in unique_edges:
-                    unique_edges.add((p1, p2))
-                    covered_required += 1
+            cost = float(path[-1][1])
 
-            if covered_required >= max_covered:
-                max_covered = covered_required
+            if cost < min_cost:
+                min_cost = cost
                 min_path = path
-                # cost = float(path[-1][1])
-                #
-                # if cost < min_cost:
-                #     min_cost = cost
-                #     min_path = path
 
     path = min_path
 
@@ -665,7 +650,7 @@ def best_a_star_path(V, E, R, distance_matrix, mapping):
 
 
 def main():
-    field_poly = choose_region(idx=2, show=True)
+    field_poly = choose_region(idx=1, show=True)
     optimum_polygons = perform_optimization(field_poly, use_mp=False)
     plot_optimum_polygons(optimum_polygons, field_poly)
     V, E, R = polygons_to_graph(optimum_polygons, show=True)
